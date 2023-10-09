@@ -1,11 +1,12 @@
-in 1
-push 2
-out 3
-hlt 0
-add 4
-sub 5
-mult 6
-div 7
-sqrt 8
-sin 9
-cos 10
+11
+in 1 0
+push 2 1
+out 3 0
+hlt 0 0
+add 4 0
+sub 5 0
+mult 6 0
+div 7 0
+sqrt 8 0
+sin 9 0
+cos 10 0

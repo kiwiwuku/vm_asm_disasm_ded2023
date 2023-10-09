@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-
+#include <sys\stat.h>
 
 //cd documents\projects\vm_asm_disasm_ded2023\assembler
 
@@ -12,121 +12,126 @@ enum Errors{
 };
 struct Command{
     int name_length;
-    char* name;
+    char name[10];
     int number;
     int args_count;
 };
+struct Text{
+    char* path;
+    char* buffer;
+    int buffer_count;
+};
 
-Errors compile(Command* commands, int commands_count, FILE* orig_file, FILE* compiled_file);
 Errors get_commands(Command* arr, int* length);
 Errors print_str(char* str);
 Errors slice(char* str, char* new_str, int offset);
 
+Errors get_file_buf(Text* text);
+Errors translate_to_cs_code(Command* commands, int commands_count, char* buf, int* code_cs, int code_cs_length);
+Errors write_in_file(char* compiled_path, int* code_cs, int code_cs_length);
+
+Errors Text_ctor(Text* text);
+Errors Text_dtor(Text* text);
+Errors Text_verif(Text* text);
+
+
 int main()
 {
-    Command commands[11] = {};
+    Errors err = OK;
     int commands_count = 0;
-    get_commands(commands, &commands_count);
-    printf("commands_count = %d\n", commands_count);
+    Command* commands = (Command*)calloc(1, sizeof(Command));
+
+    Text text = {};
+    Text_ctor(&text);
+
+    text.path = "original_file.txt";
+
+    if (err = get_commands(commands, &commands_count))
+    {
+        printf("Error in get_commands! err = %d Sorry, Bye!\n", err);
+        free(commands);
+        return 0;
+    }
     assert(commands_count);
 
-    char* orig_path = "original_file.txt";
-    FILE *orig_file = fopen(orig_path, "rb");
-    if (!orig_file)
+    int code_cs[100] = {};
+    int code_cs_length = 100;
+
+    err = get_file_buf(&text);
+    if (err)
     {
-        printf("Original file is null\nBye!\n");
+        printf("Error in get_file_buf! err = %d Sorry, Bye!\n", err);
+        free(commands);
+        return 0;
+    }
+    assert(text.buffer);
+
+    //err = translate_to_cs_code(commands, commands_count, buf, code_cs, code_cs_length);
+    if (err)
+    {
+        printf("Error in translate_to_cs_code! err = %d Sorry, Bye!\n", err);
+        free(commands);
         return 0;
     }
 
-    char* compiled_path = "compiled_file.txt";
+    char* compiled_path = "../compiled_file.txt";
     FILE *compiled_file = fopen(compiled_path, "wb");
     if (!compiled_file)
     {
         printf("Compiled file is null\nBye!\n");
+        free(commands);
         return 0;
     }
 
-    Errors err = OK;
-    if (!(err = compile(commands, commands_count, orig_file, compiled_file)))
-    {
-        printf("Error in compiling! Sorry, Bye!\n");
-        return 0;
-    }
 
-    printf("Closing files...\n");
-    fclose(orig_file);
+    printf("Closing files and freeing memory...\n");
     fclose(compiled_file);
-    printf("Files are closed. Bye!\n");
+    free(commands);
+    printf("Files are closed and free happened. Bye!\n");
     return 0;
 }
 
-Errors compile(Command* commands, int commands_count, FILE* orig_file, FILE* compiled_file)
+Errors get_file_buf(Text* text)
 {
-    assert(commands);
-    assert(commands_count);
-    assert(orig_file);
-    assert(compiled_file);
+    printf("get_file_buf...\n");
+    assert(text->path);
 
-    const int max_symbols_in_line = 50;
-    const int max_symbols_in_command = 10;
-    const int max_lines_in_file = 100;
-
-    char cur_str[max_symbols_in_line] = {}; //текущая строка
-
-    if (!fgets(cur_str, max_symbols_in_line, orig_file))
+    FILE *orig_file = fopen(text->path, "rb");
+    if (!orig_file)
     {
-        printf("No lines! Bye!\n");
+        printf("Original file is null\nBye!\n");
         return ERR;
     }
 
-    char cur_cmd[max_symbols_in_command] = {}; //текущая команда
-    int received = 0;
+    struct stat st;
+    stat(text->path, &st);
 
-    for (int line = 0; line < max_lines_in_file; line++)
+    text->buffer_count = st.st_size + 1;
+
+    if (text->buffer_count <= 1)
+        return ERR;
+    printf("1 buf = %p\n", text->buffer);
+    text->buffer = (char*)calloc(text->buffer_count, sizeof(char));
+    printf("2 buf = %p\n", text->buffer);
+    assert(text->buffer);
+
+    fread(text->buffer, sizeof(char), text->buffer_count, orig_file);
+    printf("2 buf = %p\n", text->buffer);
+
+    return OK;
+}
+
+Errors translate_to_cs_code(Command* commands, int commands_count, char* buf, int* code_cs, int code_cs_length)
+{
+    assert(commands);
+    assert(commands_count > 0);
+    assert(buf);
+    assert(code_cs);
+
+    /*for (int i = 0; i < code_cs_length)
     {
-        printf("line = %d cur_str = \n", line);
-        print_str(cur_str);
-
-        received = sscanf(cur_str, "%s", cur_cmd); //считываем первое слово строки
-        if (!received)
-            return ERR;
-        printf("line = %d cur_cmd = %s\n", line, cur_cmd);
-
-        for (int j = 0; j < commands_count; j++) //ищем соответствие среди названий команд
-        {
-            printf("Seeking for this command... j = %d\n", j);
-            if (!strcmp(cur_cmd, commands[j].name)) //нашли используемую команду
-            {
-                printf("Assembler is replacing \"%s\" with \"%d\"\n", commands[j].name, commands[j].number);
-
-                char new_cmd[10] = {}; //хранит строковое представление номера команды
-                if (commands[j].args_count == 0)
-                {
-                    sprintf(new_cmd, "%d\n", commands[j].number);
-                    fwrite(new_cmd, sizeof(char), strlen(new_cmd), compiled_file); //записываем в файл номер команды
-
-                    break;
-                }
-                sprintf(new_cmd, "%d", commands[j].number);
-
-                fwrite(new_cmd, sizeof(char), strlen(new_cmd), compiled_file); //записываем в файл номер команды
-
-                char new_cur_str[max_symbols_in_line] = {};
-                slice(cur_str, new_cur_str, commands[j].name_length);
-
-                fwrite(new_cur_str, sizeof(char), strlen(new_cur_str), compiled_file); //записываем в файл оставшуюся часть строки
-
-                printf("new_cur_str = \n");
-                print_str(new_cur_str);
-
-                break;
-            }
-        }
-
-        if (!fgets(cur_str, max_symbols_in_line, orig_file))
-            break;
-    }
-    printf("compile() happened!");
+        fscanf()
+    }*/
     return OK;
 }
 
@@ -147,14 +152,6 @@ Errors slice(char* str, char* new_str, int offset)
     new_str[0] = ' ';
     int i = 1;
     printf("slice() ...\n");
-    printf("len = %d\n", len);
-    printf("offset = %d\n", offset);
-    printf("new_str[0] = %c(%d)\n", new_str[0], new_str[0]);
-    printf("new_str[1] = %c(%d)\n", new_str[1], new_str[1]);
-    printf("new_str[2] = %c(%d)\n", new_str[2], new_str[2]);
-    printf("str[0] = %c(%d)\n", str[0], str[0]);
-    printf("str[1] = %c(%d)\n", str[1], str[1]);
-    printf("str[2] = %c(%d)\n", str[2], str[2]);
 
     while ((i+offset) < len)
     {
@@ -170,24 +167,74 @@ Errors get_commands(Command* arr, int* length)
 {
     assert(arr);
     assert(length);
-    Command result[11]= {{2, "in", 1, 0},
-                        {4, "push", 2, 1},
-                        {3, "out", 3, 0},
-                        {3, "hlt", 0, 0},
-                        {3, "add", 4, 0},
-                        {3, "sub", 5, 0},
-                        {4, "mult", 6, 0},
-                        {3, "div", 7, 0},
-                        {4, "sqrt", 8, 0},
-                        {3, "sin", 9, 0},
-                        {3, "cos", 10, 0}};
-    *length = 11;
+    printf("get_commands...\n");
+    char* cmds_path = "../commands.txt";
+    FILE *cmds_file = fopen(cmds_path, "rb");
+    if (!cmds_file)
+    {
+        printf("Commands file is null\nBye!\n");
+        return ERR;
+    }
+    fscanf(cmds_file, "%d", length); //из первой строчки считываем кол-во команд
+    arr = (Command*)realloc(arr, (*length)*sizeof(Command));
+    assert(arr);
     for (int i = 0; i < *length; i++)
     {
-        arr[i] = result[i];
-        printf("commands[%d] = %s = %d\n", i, arr[i].name, arr[i].number);
+        if (!fscanf(cmds_file, "\n%s", arr[i].name))
+        {
+            printf("Error! Can't read command's name!\n");
+            fclose(cmds_file);
+            return ERR;
+        }
+        arr[i].name_length = strlen(arr[i].name);
+        if (!fscanf(cmds_file, "%d", &(arr[i].number)))
+        {
+            printf("Error! Can't read command's number!\n");
+            fclose(cmds_file);
+            return ERR;
+        }
+        if (!fscanf(cmds_file, "%d", &(arr[i].args_count)))
+        {
+            printf("Error! Can't read command's args count!\n");
+            fclose(cmds_file);
+            return ERR;
+        }
     }
-    *length = 11;
+
+    for (int i = 0; i < *length; i++)
+    {
+        printf("commands[%d] = %s = %d args_count = %d name_length = %d\n",
+               i, arr[i].name, arr[i].number, arr[i].args_count, arr[i].name_length);
+    }
+
+    fclose(cmds_file);
+    return OK;
+}
+
+Errors Text_ctor(Text* text)
+{
+    text->path = NULL;
+    text->buffer = NULL;
+    text->buffer_count = 0;
+
+    return OK;
+}
+
+Errors Text_dtor(Text* text)
+{
+    free(text->buffer);
+    text->path = NULL;
+    text->buffer_count = -1;
+
+    return OK;
+}
+
+Errors Text_verif(Text *text)
+{
+    assert(text);
+    assert(text->path);
+    assert(text->buffer);
+    assert(text->buffer_count >= 0);
 
     return OK;
 }

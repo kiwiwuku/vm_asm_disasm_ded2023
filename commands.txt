@@ -2,7 +2,7 @@
 in 1 0
 push 2 1
 out 3 0
-hlt 0 0
+hlt -1 0
 add 4 0
 sub 5 0
 mult 6 0

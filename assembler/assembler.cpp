@@ -35,7 +35,7 @@ Errors print_str(char* str);
 
 Errors get_file_buf(Text* text);
 Errors translate_to_code_sc(Command* commands, int commands_count, Text* text, Code_SC* codesc);
-Errors write_in_file(char* compiled_path, Code_SC* codesc);
+Errors write_in_file(char* compiled_path, char* compiled_path_bin, Code_SC* codesc);
 Errors get_command_by_name(Command* commands, int commands_count, Command* command);
 
 Errors print_code_sc(Code_SC* code_sc);
@@ -61,9 +61,9 @@ int main()
     Text text = {};
     Text_ctor(&text);
 
-    text.path = "original_file.txt";
+    text.path = "../original_file.txt";
 
-    if (err = get_commands(&commands, &commands_count))
+    if ((err = get_commands(&commands, &commands_count)))
     {
         printf("Error in get_commands! err = %d Sorry, Bye!\n", err);
         free(commands);
@@ -101,17 +101,17 @@ int main()
     }
 
     char* compiled_path = "../compiled_file.txt";
-    FILE *compiled_file = fopen(compiled_path, "wb");
-    if (!compiled_file)
+    char* compiled_path_bin = "../compiled_file.bin";
+    err = write_in_file(compiled_path, compiled_path_bin, &code_sc);
+    if (err)
     {
-        printf("Compiled file is null\nBye!\n");
+        printf("Error in write_in_file! err = %d Sorry, Bye!\n", err);
         free(commands);
         return 0;
     }
 
-
+    printf("write_in_file happened!\n");
     printf("Closing files and freeing memory...\n");
-    fclose(compiled_file);
     free(commands);
     Code_SC_dtor(&code_sc);
     Text_dtor(&text);
@@ -178,13 +178,11 @@ Errors translate_to_code_sc(Command* commands, int commands_count, Text* text, C
             break;
         }
         printf("1 ip = %d codesc->code[ip] [%p] = %d codesc->length = %d\n", ip, codesc->code+ip, codesc->code[ip], codesc->length);
-        print_code_sc(codesc);
 
         codesc->code[ip++] = cur_command.number;
         codesc->length++;
 
         printf("2 ip = %d codesc->code[ip-1] [%p] = %d codesc->length = %d\n", ip, codesc->code+ip-1, codesc->code[ip-1], codesc->length);
-        print_code_sc(codesc);
 
         for (int i = 0; i < cur_command.args_count; i++)
         {
@@ -200,22 +198,61 @@ Errors translate_to_code_sc(Command* commands, int commands_count, Text* text, C
             codesc->code[ip++] = cur_numb;
             codesc->length++;
         }
-        printf("3\n");
-
         received = sscanf(text->words[counter++], "%s", cur_command.name);
 
-        printf("4\n");
         printf("end of while counter = %d cur_command.name = %s cur_command.args_count = %d cur_command.number = %d received = %d codesc->length = %d\n",
                counter, cur_command.name, cur_command.args_count, cur_command.number, received, codesc->length);
     }
-
-    print_code_sc(codesc);
-
     return OK;
 }
 
-Errors write_in_file(char* compiled_path, Code_SC* codesc)
+Errors write_in_file(char* compiled_path, char* compiled_path_bin, Code_SC* codesc)
 {
+    assert(compiled_path);
+    Code_SC_verif(codesc);
+
+    FILE *compiled_file = fopen(compiled_path, "wb");
+    if (!compiled_file)
+    {
+        printf("Compiled file is null\nBye!\n");
+        return ERR;
+    }
+
+    int returned = -1;
+    for (int i = 0; i < codesc->length; i++)
+    {
+        returned = fprintf(compiled_file, "%d ", codesc->code[i]);
+        if (returned < 0)
+        {
+            printf("Error in writing in compiled_file. Sorry, Bye!\n");
+            fclose(compiled_file);
+            return ERR;
+        }
+    }
+    printf("Written in compiled_file!\n");
+    fclose(compiled_file);
+    printf("compiled_file is closed!\n");
+
+    FILE *compiled_file_bin = fopen(compiled_path_bin, "wb");
+    if (!compiled_file_bin)
+    {
+        printf("Compiled file bin is null\nBye!\n");
+        return ERR;
+    }
+
+    returned = fwrite(codesc->code, sizeof(int), codesc->length, compiled_file_bin);
+
+    if (returned != codesc->length)
+    {
+        printf("Error in writing in compiled_file_bin. Sorry, Bye!\n");
+        fclose(compiled_file_bin);
+        return ERR;
+    }
+
+    printf("Written in compiled_file_bin!\n");
+    fclose(compiled_file_bin);
+    printf("compiled_file_bin is closed!\n");
+
     return OK;
 }
 
